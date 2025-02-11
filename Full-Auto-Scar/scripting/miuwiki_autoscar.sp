@@ -130,10 +130,15 @@ public void OnPluginStart()
 	LoadGameData();
 	// cvar_l4d2_scar_mininterrupt = CreateConVar("l4d2_scar_mininterrupt", "0.05", "min interrupt time. if your server often lag or player can't shoot or reload, add it.", 0, true, 0.03);
 	cvar_l4d2_scar_cycletime    = CreateConVar("l4d2_scar_cycletime", "0.11", "scar full auto cycle time. [min 0.03]", 0, true, 0.03);
-	cvar_l4d2_scar_reloadtime   = CreateConVar("l4d2_scar_reloadtime", "1.5", "scar full auto reload time. [min 0.5]", 0, true, 0.5);
+	cvar_l4d2_scar_reloadtime   = CreateConVar("l4d2_scar_reloadtime", "1.5", "scar full auto reload time. [min 0.5. 3.32=Same as Triple Tap default reload time]", 0, true, 0.5);
+
+	GetCvars();
+	//cvar_l4d2_scar_mininterrupt.AddChangeHook(ConVarChanged_Cvars);
+	cvar_l4d2_scar_cycletime.AddChangeHook(ConVarChanged_Cvars);
+	cvar_l4d2_scar_reloadtime.AddChangeHook(ConVarChanged_Cvars);
 
 	// RegConsoleCmd("sm_autoscar", Cmd_AutoScar);
-	// AutoExecConfig(true);
+	AutoExecConfig(true,       "miuwiki_autoscar");
 
 	AddCommandListener(CmdListen_weapon_reparse_server, "weapon_reparse_server");
 
@@ -154,6 +159,18 @@ void LateLoad()
 
         OnClientPutInServer(client);
     }
+}
+
+void ConVarChanged_Cvars(ConVar hCvar, const char[] sOldVal, const char[] sNewVal)
+{
+	GetCvars();
+}
+
+void GetCvars()
+{
+	// cvar.mininterrupt = cvar_l4d2_scar_mininterrupt.FloatValue;
+	cvar.cycletime    = cvar_l4d2_scar_cycletime.FloatValue;
+	cvar.reloadtime   = cvar_l4d2_scar_reloadtime.FloatValue;
 }
 
 #define ZOOM_Sound "weapons/hunting_rifle/gunother/hunting_rifle_zoom.wav"
@@ -188,9 +205,7 @@ public void OnClientConnected(int client)
 
 public void OnConfigsExecuted()
 {
-	// cvar.mininterrupt = cvar_l4d2_scar_mininterrupt.FloatValue;
-	cvar.cycletime    = cvar_l4d2_scar_cycletime.FloatValue;
-	cvar.reloadtime   = cvar_l4d2_scar_reloadtime.FloatValue;
+	GetCvars();
 
 	g_iMaxScarClip = L4D2_GetIntWeaponAttribute("weapon_rifle_desert", L4D2IWA_ClipSize);
 }
@@ -375,7 +390,7 @@ MRESReturn DhookCallback_ItemPostFrame(int pThis)
 	else if(IsGettingUp(client))
 	{
 		player[client].needrelease = true;
-		player[client].switchendtime = currenttime + 0.93; 
+		player[client].switchendtime = currenttime + 0.97; 
 		player[client].reloadendtime = NOT_IN_RELOAD;
 		player[client].lastAction	= 2;
 		SetEntProp(client, Prop_Data, "m_bPredictWeapons", 0);
