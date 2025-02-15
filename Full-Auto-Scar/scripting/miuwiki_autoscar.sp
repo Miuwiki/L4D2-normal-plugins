@@ -7,7 +7,7 @@
 #include <dhooks>
 #include <left4dhooks>
 
-#define PLUGIN_VERSION "1.4-2025/2/12"
+#define PLUGIN_VERSION "1.4-2025/2/15"
 
 public Plugin myinfo =
 {
@@ -385,9 +385,10 @@ MRESReturn DhookCallback_ItemPostFrame(int pThis)
 		}
 		//player[client].lasttickcount = currenttickcount;
 		player[client].lastAction	= 2;
+		SetEntProp(client, Prop_Data, "m_bPredictWeapons", 0);
 		return MRES_Ignored;
 	}
-	else if(IsGettingUp(client))
+	else if(IsGettingUp(client) || IsClientOnLadder(client))
 	{
 		player[client].needrelease = true;
 		player[client].switchendtime = currenttime + 0.97; 
@@ -617,6 +618,15 @@ public Action OnPlayerRunCmd(int client, int &buttons)
 
 public void OnPlayerRunCmdPost(int client, int buttons)
 {
+	if( !IsClientInGame(client) || IsFakeClient(client) || GetClientTeam(client) != 2 )
+		return;
+
+	if (IsUsingMinigun(client))
+	{
+		player[client].lastAction = 0;
+		return;
+	}
+
 	if( buttons & IN_ZOOM )
 	{
 		if( player[client].inzoom )
@@ -733,4 +743,9 @@ bool IsGettingUp(int client)
 	}
 
 	return false;
+}
+
+bool IsClientOnLadder(int client)
+{
+    return GetEntityMoveType(client) == MOVETYPE_LADDER;
 }
