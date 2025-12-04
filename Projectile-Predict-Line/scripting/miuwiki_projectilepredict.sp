@@ -65,10 +65,13 @@ enum struct GlobalPlayerData
 	{
 		for(int i = 0; i < sizeof(this.quadraticbeam); i++)
 		{
-			if( this.quadraticbeam[i] > 31 && IsValidEntity(this.quadraticbeam[i]) )
-				RemoveEntity(this.quadraticbeam[i]);
+			int entity = EntRefToEntIndex(this.quadraticbeam_ref[i]);
+
+			if( entity > 31 && IsValidEntity(entity) )
+				RemoveEntity(entity);
 			
 			this.quadraticbeam[i] = -1;
+			this.quadraticbeam_ref[i] = -1;
 			this.quadraticbeam_enable[i] = false;
 		}
 	}
