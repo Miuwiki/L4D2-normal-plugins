@@ -33,60 +33,15 @@ public Plugin myinfo =
 #define SUFACE_ELASTICTY        1.0
 #define PLAYER_ELASTICY 		0.3
 
-#define PROJECTILE_ELASTICITY   0.45  // m_flElasticity
-#define PROJECTILE_DEFAULT_VEL  750.0 // m_vecAbsVelocity length
-#define PROJECTILE_SIZE         1.25  // m_vecmin & m_vecmax
+#define PROJECTILE_DEFAULT_ELASTICITY   0.45  // m_flElasticity
+#define PROJECTILE_DEFAULT_THROW_VEL  750.0 // m_vecAbsVelocity length
+#define PROJECTILE_DEFAULT_SIZE         1.25  // m_vecmin & m_vecmax
 
 #define MAX_QUADRATICBEAMS      5
 
 #define GRAVATIY_ACCELERATION   5.333313  // WHEN GRAVATY IS 0.400000
 #define VELOCITY_PERCENT        0.016666  // EACH VEL TRANSOFRM POS IN NEXT FRAME
 #define MAX_TRACE_STEP   		200       // THE MAX STEP OF COLLISION CHECK BEFORE DROP IT
-
-enum struct GlobalPlayerData
-{
-	int  quadraticbeam[MAX_QUADRATICBEAMS];
-	int  quadraticbeam_ref[MAX_QUADRATICBEAMS];
-	bool quadraticbeam_enable[MAX_QUADRATICBEAMS];
-
-	void InitAllBeam()
-	{
-		for(int i = 0; i < sizeof(this.quadraticbeam); i++)
-		{
-			this.quadraticbeam[i]        = CreateQuadraticbeam();
-			this.quadraticbeam_ref[i]    = this.quadraticbeam[i] == -1 ? -1 : EntIndexToEntRef(this.quadraticbeam[i]);
-			this.quadraticbeam_enable[i] = false;
-
-			// SDKHook(this.quadraticbeam[i], SDKHook_SetTransmit, SDKCallback_QuadraticBeamTransimit);
-		}
-	}
-
-	void RemoveAllBeam()
-	{
-		for(int i = 0; i < sizeof(this.quadraticbeam); i++)
-		{
-			if( this.quadraticbeam[i] > 31 && IsValidEntity(this.quadraticbeam[i]) )
-				RemoveEntity(this.quadraticbeam[i]);
-			
-			this.quadraticbeam[i] = -1;
-			this.quadraticbeam_enable[i] = false;
-		}
-	}
-
-	void DisableBeam()
-	{
-		for(int i = 0; i < sizeof(this.quadraticbeam); i++)
-		{
-			this.quadraticbeam_enable[i] = false;
-		}
-	}
-
-	int templine[MAX_QUADRATICBEAMS];
-}
-
-GlobalPlayerData
-	player[MAXPLAYERS + 1];
-
 
 enum struct Quadraticbeam
 {
@@ -141,69 +96,104 @@ enum struct Quadraticbeam
 	}
 }
 
-Handle
-	g_SDKCall_SetPosition;
+enum struct GlobalPluginData
+{
+    bool late;
 
-int
-	g_linemodel_id,
-	g_linehalo_id,
-	g_pipebomb_viewmodel_id;
+    Handle SDKCall_SetPosition;
+    int precache_laser_id;
+    int precache_halo_id;
+    int precache_vmodel_pipebomb_id;
+
+    void LoadLate()
+    {
+        if( !this.late )
+            return;
+        
+        for(int i = 1; i <= MaxClients; i++)
+        {
+            if( IsClientInGame(i) )
+                OnClientPutInServer(i);
+        }
+
+        OnMapStart();
+    }
+}
+
+GlobalPluginData
+    plugin;
+
+enum struct GlobalPlayerData
+{
+	int  quadraticbeam[MAX_QUADRATICBEAMS];
+	int  quadraticbeam_ref[MAX_QUADRATICBEAMS];
+	bool quadraticbeam_enable[MAX_QUADRATICBEAMS];
+
+	void InitAllBeam()
+	{
+		for(int i = 0; i < MAX_QUADRATICBEAMS; i++)
+		{
+			this.quadraticbeam[i]        = CreateQuadraticbeam();
+			this.quadraticbeam_ref[i]    = this.quadraticbeam[i] == -1 ? -1 : EntIndexToEntRef(this.quadraticbeam[i]);
+			this.quadraticbeam_enable[i] = false;
+
+			// SDKHook(this.quadraticbeam[i], SDKHook_SetTransmit, SDKCallback_QuadraticBeamTransimit);
+		}
+	}
+
+	void RemoveAllBeam() // base on ref, not entity directly
+	{
+		for(int i = 0; i < MAX_QUADRATICBEAMS; i++)
+		{
+            int check_beam = EntRefToEntIndex(this.quadraticbeam_ref[i]);
+            if( check_beam != INVALID_ENT_REFERENCE && IsValidEntity(check_beam) )
+                RemoveEntity(check_beam);
+            
+            this.quadraticbeam[i] = -1;
+            this.quadraticbeam_enable[i] = false;
+		}
+	}
+
+	void DisableBeam()
+	{
+		for(int i = 0; i < MAX_QUADRATICBEAMS; i++)
+		{
+			this.quadraticbeam_enable[i] = false;
+		}
+	}
+
+    #if DEBUG
+    int templine[MAX_QUADRATICBEAMS];
+    #endif
+}
+
+GlobalPlayerData
+	player[MAXPLAYERS + 1];
+
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
+{
+    plugin.late = late;
+    return APLRes_Success;
+}
 
 public void OnPluginStart()
 {
-	LoadGameData();
-	#if DEBUG
-		RegConsoleCmd("sm_templine", Cmd_StoreCurrentLine);
-		RegConsoleCmd("sm_rmstore", Cmd_RemoveCurrentLine);
-	#endif
-	
-	// HookEvent("grenade_bounce", Event_GrenadeBounce);
+    plugin.LoadLate();
+
+    LoadGameData();
+
+    #if DEBUG
+        RegConsoleCmd("sm_templine", Cmd_StoreCurrentLine);
+        RegConsoleCmd("sm_rmstore", Cmd_RemoveCurrentLine);
+    #endif
 }
 
-Action Cmd_StoreCurrentLine(int client, int args)
+public void OnMapStart()
 {
-	float endpos[3], controlpoint[3], startpos[3], lastendpos[3];
-	GetClientEyePosition(client, startpos);
-	for(int i = 0; i < sizeof(player[].templine); i++)
-	{
-		if( player[client].templine[i] < 31 )
-		{
-			player[client].templine[i] = CreateQuadraticbeam();
-		}
-
-		if( player[client].templine[i] == -1 )
-			continue;
-		
-
-		SDKUnhook(player[client].templine[i], SDKHook_SetTransmit, SDKCallback_QuadraticBeamTransimit);
-		GetEntPropVector(player[client].quadraticbeam[i], Prop_Send, "m_targetPosition", endpos);
-		GetEntPropVector(player[client].quadraticbeam[i], Prop_Send, "m_controlPosition", controlpoint);
-		SetEntPropVector(player[client].templine[i], Prop_Send, "m_targetPosition", endpos);
-		SetEntPropVector(player[client].templine[i], Prop_Send, "m_controlPosition", controlpoint);
-		if( i == 0 )
-			SDKCall(g_SDKCall_SetPosition, player[client].templine[i], startpos);
-		else
-			SDKCall(g_SDKCall_SetPosition, player[client].templine[i], lastendpos);
-		
-		lastendpos = endpos;
-	}
-
-	return Plugin_Handled;
+	plugin.precache_vmodel_pipebomb_id  = PrecacheModel("models/v_models/v_pipebomb.mdl");
+	plugin.precache_laser_id            = PrecacheModel("materials/sprites/laserbeam.vmt");
+	plugin.precache_halo_id             = PrecacheModel("materials/sprites/glow01.vmt");
 }
-
-Action Cmd_RemoveCurrentLine(int client, int args)
-{
-	for(int i = 0; i < sizeof(player[].templine); i++)
-	{
-		if( player[client].templine[i] < 31 )
-			continue;
-
-		RemoveEntity(player[client].templine[i]);
-	}
-
-	return Plugin_Handled;
-}
-
 
 public void OnClientPutInServer(int client)
 {
@@ -216,17 +206,6 @@ public void OnClientPutInServer(int client)
 public void OnClientDisconnect(int client)
 {
 	player[client].RemoveAllBeam();
-}
-
-Action SDKCallback_QuadraticBeamTransimit(int entity, int client)
-{
-	for(int i = 0; i < MAX_QUADRATICBEAMS; i++)
-	{
-		if( entity == player[client].quadraticbeam[i] && player[client].quadraticbeam_enable[i] )
-			return Plugin_Continue;
-	}
-
-	return Plugin_Stop;
 }
 
 public void OnPlayerRunCmdPost(int client, int buttons, int impulse)
@@ -243,26 +222,19 @@ public void OnPlayerRunCmdPost(int client, int buttons, int impulse)
 		return;
 	}
 
-	float pos[3], ang[3], vec_fwd[3];
+	static float pos[3], ang[3], vec_fwd[3];
 	GetClientEyeAngles(client, ang);
 	GetClientEyePosition(client, pos);
 	GetAngleVectors(ang, vec_fwd, NULL_VECTOR, NULL_VECTOR);
 	NormalizeVector(vec_fwd, vec_fwd);
 	
-	ScaleVector(vec_fwd, PROJECTILE_DEFAULT_VEL);
+	ScaleVector(vec_fwd, PROJECTILE_DEFAULT_THROW_VEL);
 	// PrintToChatAll("eye pos %f %f %f, \neye vel %f %f %f", pos[0], pos[1], pos[2], vec_fwd[0], vec_fwd[1], vec_fwd[2]);
 	// GetEntPropVector(ac)
 	player[client].DisableBeam();
-	if( HasEntProp(active_weapon, Prop_Send, "m_iViewModelIndex") 
-	&& GetEntProp(active_weapon, Prop_Send, "m_iViewModelIndex") == g_pipebomb_viewmodel_id )
-	{
-		DoPredictLine(client, pos, vec_fwd, 0, true);
-	}
-	else
-	{
-		DoPredictLine(client, pos, vec_fwd, 0, false);
-	}
-	
+
+    // is pipebome or not GetEntProp(active_weapon, Prop_Send, "m_iViewModelIndex") == plugin.precache_vmodel_pipebomb_id
+	DoPredictLine(client, pos, vec_fwd, 0, GetEntProp(active_weapon, Prop_Send, "m_iViewModelIndex") == plugin.precache_vmodel_pipebomb_id);
 }
 
 void DoPredictLine(int client, float pos[3], float vel[3], int lineindex, bool pipe)
@@ -290,23 +262,21 @@ void DoPredictLine(int client, float pos[3], float vel[3], int lineindex, bool p
 		beam.GetLinePointVel(step, point1_vel);
 		trace = TR_TraceHullFilterEx(point1, 
 									 point2, 
-									 {-PROJECTILE_SIZE, -PROJECTILE_SIZE, -PROJECTILE_SIZE},
-									 {PROJECTILE_SIZE, PROJECTILE_SIZE, PROJECTILE_SIZE},
+									 {-PROJECTILE_DEFAULT_SIZE, -PROJECTILE_DEFAULT_SIZE, -PROJECTILE_DEFAULT_SIZE},
+									 {PROJECTILE_DEFAULT_SIZE, PROJECTILE_DEFAULT_SIZE, PROJECTILE_DEFAULT_SIZE},
 									 MASK_SOLID,
 									 TraceFilter_Thrower,
 									 client);
 		int ent = TR_GetEntityIndex(trace);
-		if( TR_DidHit(trace) && (ent < 1 || ent > 31) ) // player doesn't block projectile to move.
+		if( TR_DidHit(trace) && (ent < 1 || ent > 31) ) // player seem doesn't block projectile to move.
 		{
 			TR_GetEndPosition(hit, trace);
 			TR_GetPlaneNormal(trace, planenormal);
-			// SDKCall(g_SDKCall_PhysicsClipVelocity, startvel, planenormal, vel_reflec, 2.0);
-			// SDKCall need a entity, i copy the actually code that the func use in the next.
-			GetReflection(point1_vel, planenormal, reflectionvel, 2.0); // we can't actually get the vel in hit position, just use the point1_vel instead.
+			// SDKCall(g_SDKCall_PhysicsClipVelocity, startvel, planenormal, vel_reflec, 2.0); // SDKCall need a entity, i copy the actually code that the func use in the next.
+			GetReflection(point1_vel, planenormal, reflectionvel, 2.0);                        // We can't actually get the vel in hit position, just use the point1_vel as approximate.
+			// float elasticity = ent > 0 && ent < 31 ? PLAYER_ELASTICY : SUFACE_ELASTICTY;    // We don't trace player collision so don't need to consider this.
 
-			// float elasticity = ent > 0 && ent < 31 ? PLAYER_ELASTICY : SUFACE_ELASTICTY; // we don't trace player collision do don't need to consider this.
-
-			ScaleVector(reflectionvel, minmax(PROJECTILE_ELASTICITY * SUFACE_ELASTICTY, 0.0, 0.9));
+			ScaleVector(reflectionvel, minmax(PROJECTILE_DEFAULT_ELASTICITY * SUFACE_ELASTICTY, 0.0, 0.9));
 			reflectionvel[2] = reflectionvel[2] > 150.0 ? 150.0 : reflectionvel[2];
 			if( !pipe )
 				ScaleVector(reflectionvel, 0.4);
@@ -315,7 +285,8 @@ void DoPredictLine(int client, float pos[3], float vel[3], int lineindex, bool p
 			{
 				if( GetVectorLength(reflectionvel, true) < 900 || !pipe ) // (30 * 30) or not pipe
 				{
-					reflectionvel = {0.0, 0.0, 0.0}; // next predict will be return at first since vel is too slow.
+                    // next predict will be return immedately in this recusion function. since vel is too slow.
+					reflectionvel = {0.0, 0.0, 0.0};
 				}
 				// Does not change the entities velocity at all | https://github.com/nillerusr/source-engine/blob/master/game/server/physics_main.cpp#L1214
 				else 
@@ -347,7 +318,8 @@ void DoPredictLine(int client, float pos[3], float vel[3], int lineindex, bool p
 			}
 			else if( GetVectorLength(reflectionvel, true) < 900 )
 			{
-				reflectionvel = {0.0, 0.0, 0.0}; // next predict will be return at first since vel is too slow.
+                // next predict will be return immedately in this recusion function. since vel is too slow.
+				reflectionvel = {0.0, 0.0, 0.0};
 			}
 			
 			beam.GetControlPoint(step, controlpoint);
@@ -378,7 +350,6 @@ bool TraceFilter_Thrower(int entity, int contentsMask, int thrower)
 	return true;
 }
 
-
 void DrawLine(int client, float startpos[3], float endpos[3], float controlpoint[3], int lineindex)
 {
 	int beam;
@@ -390,9 +361,7 @@ void DrawLine(int client, float startpos[3], float endpos[3], float controlpoint
 
 		if( beam == -1 )
 		{
-			#if DEBUG
-				LogMessage("showing quadraticbeam for %N with line index %d failed!", client, lineindex);
-			#endif
+			LogMessage("showing quadraticbeam for %N with line index %d failed!", client, lineindex);
 			return;
 		}
 		else
@@ -405,10 +374,59 @@ void DrawLine(int client, float startpos[3], float endpos[3], float controlpoint
 	{
 		beam = player[client].quadraticbeam[lineindex];
 	}
+
 	SetEntPropVector(beam, Prop_Send, "m_targetPosition", endpos);
 	SetEntPropVector(beam, Prop_Send, "m_controlPosition", controlpoint);
-	SDKCall(g_SDKCall_SetPosition, beam, startpos);
+	SDKCall(plugin.SDKCall_SetPosition, beam, startpos);
 }
+
+Action SDKCallback_QuadraticBeamTransimit(int entity, int client)
+{
+	for(int i = 0; i < MAX_QUADRATICBEAMS; i++)
+	{
+		if( entity == player[client].quadraticbeam[i] && player[client].quadraticbeam_enable[i] )
+			return Plugin_Continue;
+	}
+
+	return Plugin_Stop;
+}
+
+int CreateQuadraticbeam()
+{
+	int beam = CreateEntityByName("env_quadraticbeam");
+	if( beam == -1 )
+		return -1;
+
+	SetEntityModel(beam, "materials/sprites/laserbeam.vmt");
+	// SetEntPropVector(line, Prop_Send, "m_targetPosition", endpos);
+	// SetEntPropVector(line, Prop_Send, "m_controlPosition", controlpoint);
+	SetEntPropFloat(beam, Prop_Send, "m_scrollRate", 0.0);
+	SetEntPropFloat(beam, Prop_Send, "m_flWidth", 2.0);
+	
+	// AcceptEntityInput(line, "Color 0 0 0");
+	DispatchSpawn(beam);
+	TeleportEntity(beam, {0.0,0.0,0.0});
+
+	SDKHook(beam, SDKHook_SetTransmit, SDKCallback_QuadraticBeamTransimit);
+	return beam;
+}
+
+void LoadGameData()
+{
+	GameData hGameData = new GameData(GAMEDATA);
+	if(hGameData == null) 
+		SetFailState("Failed to load \"%s.txt\" gamedata.", GAMEDATA);
+	
+	StartPrepSDKCall(SDKCall_Entity);
+	PrepSDKCall_SetFromConf(hGameData, SDKConf_Signature, "CBaseEntity::SetLocalOrigin");
+	PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_ByRef);
+	if( !(plugin.SDKCall_SetPosition = EndPrepSDKCall()) )
+		SetFailState("failed to load signature");
+
+	delete hGameData;
+}
+
+
 
 /**
  * https://github.com/mastercomfig/tf2-patches/blob/adce75185fe5822309f356424ea449dee029e2d8/src/game/shared/physics_main_shared.cpp#L1339
@@ -462,53 +480,56 @@ stock float minmax(float a, float min, float max)
 	return t > max ? max : t;
 }
 
-
-void LoadGameData()
+#if DEBUG
+Action Cmd_StoreCurrentLine(int client, int args)
 {
-	char sPath[PLATFORM_MAX_PATH];
-	BuildPath(Path_SM, sPath, sizeof(sPath), "gamedata/%s.txt", GAMEDATA);
-	if( !FileExists(sPath) ) 
-		SetFailState("\n==========\nMissing required file: \"%s\".\n==========", sPath);
+	float endpos[3], controlpoint[3], startpos[3], lastendpos[3];
+	GetClientEyePosition(client, startpos);
+	for(int i = 0; i < sizeof(player[].templine); i++)
+	{
+		if( player[client].templine[i] < 31 )
+		{
+			player[client].templine[i] = CreateQuadraticbeam();
+		}
 
-	GameData hGameData = new GameData(GAMEDATA);
-	if(hGameData == null) 
-		SetFailState("Failed to load \"%s.txt\" gamedata.", GAMEDATA);
-	
-	StartPrepSDKCall(SDKCall_Entity);
-	PrepSDKCall_SetFromConf(hGameData, SDKConf_Signature, "CBaseEntity::SetLocalOrigin");
-	PrepSDKCall_AddParameter(SDKType_Vector, SDKPass_ByRef);
-	if( !(g_SDKCall_SetPosition = EndPrepSDKCall()) )
-		SetFailState("failed to load signature");
-	delete hGameData;
+		if( player[client].templine[i] == -1 )
+			continue;
+		
+		SDKUnhook(player[client].templine[i], SDKHook_SetTransmit, SDKCallback_QuadraticBeamTransimit);
+		GetEntPropVector(player[client].quadraticbeam[i], Prop_Send, "m_targetPosition", endpos);
+		GetEntPropVector(player[client].quadraticbeam[i], Prop_Send, "m_controlPosition", controlpoint);
+		SetEntPropVector(player[client].templine[i], Prop_Send, "m_targetPosition", endpos);
+		SetEntPropVector(player[client].templine[i], Prop_Send, "m_controlPosition", controlpoint);
+		if( i == 0 )
+			SDKCall(plugin.SDKCall_SetPosition, player[client].templine[i], startpos);
+		else
+			SDKCall(plugin.SDKCall_SetPosition, player[client].templine[i], lastendpos);
+		
+		lastendpos = endpos;
+	}
+
+	return Plugin_Handled;
 }
 
-
-public void OnMapStart()
+Action Cmd_RemoveCurrentLine(int client, int args)
 {
-	PrecacheModel("materials/sprites/laserbeam.vmt");
-	g_pipebomb_viewmodel_id = PrecacheModel("models/v_models/v_pipebomb.mdl");
-	g_linemodel_id = PrecacheModel("materials/sprites/laserbeam.vmt");
-	g_linehalo_id  = PrecacheModel("materials/sprites/glow01.vmt");
+	for(int i = 0; i < MAX_QUADRATICBEAMS; i++)
+	{
+		if( player[client].templine[i] < 31 || !IsValidEntity(player[client].templine[i]) )
+			continue;
+
+		RemoveEntity(player[client].templine[i]);
+	}
+
+	return Plugin_Handled;
 }
 
-int CreateQuadraticbeam()
+void SDKCallback_MolotovProjectileSpawn(int entity)
 {
-	int beam = CreateEntityByName("env_quadraticbeam");
-	if( beam == -1 )
-		return -1;
-
-	SetEntityModel(beam, "materials/sprites/laserbeam.vmt");
-	// SetEntPropVector(line, Prop_Send, "m_targetPosition", endpos);
-	// SetEntPropVector(line, Prop_Send, "m_controlPosition", controlpoint);
-	SetEntPropFloat(beam, Prop_Send, "m_scrollRate", 0.0);
-	SetEntPropFloat(beam, Prop_Send, "m_flWidth", 2.0);
-	
-	// AcceptEntityInput(line, "Color 0 0 0");
-	DispatchSpawn(beam);
-	TeleportEntity(beam, {0.0,0.0,0.0});
-
-	SDKHook(beam, SDKHook_SetTransmit, SDKCallback_QuadraticBeamTransimit);
-	return beam;
+	if( entity > 31 && IsValidEntity(entity) )
+	{
+		RequestFrame(NextFrame_GetVel, entity);
+	}
 }
 
 public void OnEntityCreated(int entity, const char[] classname)
@@ -521,17 +542,9 @@ public void OnEntityCreated(int entity, const char[] classname)
 	#endif 
 }
 
-
-void SDKCallback_MolotovProjectileSpawn(int entity)
-{
-	if( entity > 31 && IsValidEntity(entity) )
-	{
-		RequestFrame(NextFrame_GetVel, entity);
-	}
-}
-
 void NextFrame_GetVel(int entity)
 {
-	TE_SetupBeamFollow(entity, g_linemodel_id, g_linehalo_id, 100.0, 1.0, 3.0, 1, {70, 50, 150, 255});
+	TE_SetupBeamFollow(entity, plugin.precache_laser_id, plugin.precache_halo_id, 100.0, 1.0, 3.0, 1, {70, 50, 150, 255});
 	TE_SendToAll();
 }
+#endif
