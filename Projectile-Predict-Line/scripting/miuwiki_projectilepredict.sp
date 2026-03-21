@@ -5,7 +5,7 @@
 #include <sdkhooks>
 #include <sdktools>
 
-#define PLUGIN_VERSION "1.0"
+#define PLUGIN_VERSION "1.1"
 
 public Plugin myinfo =
 {
@@ -143,15 +143,21 @@ enum struct GlobalPlayerData
 
 	void RemoveAllBeam() // base on ref, not entity directly
 	{
-		for(int i = 0; i < MAX_QUADRATICBEAMS; i++)
-		{
+        char name[64];
+        for(int i = 0; i < MAX_QUADRATICBEAMS; i++)
+        {
             int check_beam = EntRefToEntIndex(this.quadraticbeam_ref[i]);
             if( check_beam != INVALID_ENT_REFERENCE && IsValidEntity(check_beam) )
-                RemoveEntity(check_beam);
-            
+            {
+                GetEntityClassname(check_beam, name, sizeof(name));
+                if( strcmp(name, "env_quadraticbeam") == 0 )
+                    RemoveEntity(check_beam);
+            }
+                
             this.quadraticbeam[i] = -1;
+            this.quadraticbeam_ref[i] = -1;
             this.quadraticbeam_enable[i] = false;
-		}
+        }
 	}
 
 	void DisableBeam()
